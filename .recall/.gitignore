@@ -1,0 +1,7 @@
+# Recall MCP Server - Git Configuration
+# The index.db is regenerated from JSONL files
+# Logs are for debugging, not for version control
+# Only commit the JSONL files (source of truth)
+index.db
+index.db-*
+logs/
