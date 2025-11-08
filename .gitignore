@@ -162,6 +162,11 @@ Thumbs.db
 # Julie MCP indexing
 .julie/
 
+# ONNX Models
+# These should be downloaded via setup script, not committed to git
+Recall/Assets/model/model.onnx
+Recall/Assets/model/vocab.txt
+
 # Recall MCP Server
 # Note: .recall/ directory is NOT ignored - JSONL files are the source of truth
 # Only index.db and logs are ignored via .recall/.gitignore

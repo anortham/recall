@@ -31,6 +31,9 @@ public class EmbeddingService : IDisposable
         var actualModelPath = modelPath ?? defaultModelPath;
         var actualVocabPath = vocabPath ?? defaultVocabPath;
 
+        // Ensure model files exist - download if missing
+        EnsureModelFilesExist(actualModelPath, actualVocabPath).GetAwaiter().GetResult();
+
         // Log available ONNX execution providers (only once)
         lock (_logLock)
         {
@@ -48,6 +51,62 @@ public class EmbeddingService : IDisposable
             modelPath: actualModelPath,
             tokenizer: tokenizer
         );
+    }
+
+    private async Task EnsureModelFilesExist(string modelPath, string vocabPath)
+    {
+        var modelExists = File.Exists(modelPath);
+        var vocabExists = File.Exists(vocabPath);
+
+        if (modelExists && vocabExists)
+        {
+            return; // Both files exist, nothing to do
+        }
+
+        Log.Information("📥 Model files not found, downloading from HuggingFace...");
+
+        // Create directory if it doesn't exist
+        var modelDir = Path.GetDirectoryName(modelPath);
+        if (modelDir != null && !Directory.Exists(modelDir))
+        {
+            Directory.CreateDirectory(modelDir);
+        }
+
+        using var httpClient = new HttpClient();
+        httpClient.Timeout = TimeSpan.FromMinutes(5); // 86MB download may take time
+
+        const string baseUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx";
+
+        try
+        {
+            // Download model.onnx if missing
+            if (!modelExists)
+            {
+                Log.Information("⏳ Downloading model.onnx (86 MB)...");
+                var modelBytes = await httpClient.GetByteArrayAsync($"{baseUrl}/model.onnx");
+                await File.WriteAllBytesAsync(modelPath, modelBytes);
+                Log.Information("✅ model.onnx downloaded successfully");
+            }
+
+            // Download vocab.txt if missing
+            if (!vocabExists)
+            {
+                Log.Information("⏳ Downloading vocab.txt (232 KB)...");
+                var vocabBytes = await httpClient.GetByteArrayAsync($"{baseUrl}/vocab.txt");
+                await File.WriteAllBytesAsync(vocabPath, vocabBytes);
+                Log.Information("✅ vocab.txt downloaded successfully");
+            }
+
+            Log.Information("✅ Model files ready");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to download model files from HuggingFace");
+            throw new InvalidOperationException(
+                "Failed to download ONNX model files. Please check your internet connection " +
+                "or manually download from https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/tree/main/onnx",
+                ex);
+        }
     }
 
     private void LogAvailableProviders()

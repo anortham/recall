@@ -106,7 +106,7 @@ Search for memories semantically similar to a query.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/recall.git
+git clone https://github.com/anortham/recall.git
 cd recall
 
 # Build the project
@@ -114,6 +114,17 @@ dotnet build --configuration Release
 
 # Run tests to verify
 dotnet test
+```
+
+**Note:** The ONNX model files (`model.onnx` - 86MB, `vocab.txt` - 232KB) are **automatically downloaded** from HuggingFace on first use. The files are not included in the repository to keep it lightweight. The download happens once during the first `store` or `recall` operation and takes about 30-60 seconds depending on your connection.
+
+If you prefer to download manually or are in an offline environment, use the provided setup scripts:
+```bash
+# Windows
+.\setup-model.ps1
+
+# Linux/Mac
+./setup-model.sh
 ```
 
 ### Claude Code Configuration
