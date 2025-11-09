@@ -20,23 +20,29 @@ public class VectorIndexService : IDisposable
     }
 
     /// <summary>
-    /// Initializes the database and creates the memories table.
-    /// For now uses regular SQLite table; TODO: upgrade to vec0 extension.
+    /// Initializes the database and creates the vec0 virtual table.
+    /// Loads the vec0 extension for fast vector search.
     /// </summary>
     public async Task InitializeAsync()
     {
         _connection = new SqliteConnection($"Data Source={_databasePath}");
         await _connection.OpenAsync();
 
-        // TODO: Load vec0 extension when available
-        // For now, use regular SQLite table with BLOB for vectors
+        // Load vec0 extension
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var extensionPath = Path.Combine(baseDir, "Assets", "sqlite-vec", "vec0");
+
+        _connection.EnableExtensions(true);
+        _connection.LoadExtension(extensionPath);
+
+        // Create virtual table using vec0 for vector search
+        // Note: vec0 virtual tables handle storage differently than regular tables
         using var command = _connection.CreateCommand();
         command.CommandText = @"
-            CREATE TABLE IF NOT EXISTS memories (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                file_path TEXT NOT NULL,
-                line_number INTEGER NOT NULL,
-                embedding BLOB NOT NULL
+            CREATE VIRTUAL TABLE IF NOT EXISTS memories USING vec0(
+                embedding float[384],
+                +file_path TEXT,
+                +line_number INTEGER
             );
         ";
         await command.ExecuteNonQueryAsync();
@@ -62,25 +68,24 @@ public class VectorIndexService : IDisposable
             throw new ArgumentException("Embedding must be 384 dimensions", nameof(embedding));
         }
 
-        // Serialize float[] to bytes
-        var embeddingBytes = new byte[embedding.Length * sizeof(float)];
-        Buffer.BlockCopy(embedding, 0, embeddingBytes, 0, embeddingBytes.Length);
+        // Convert float[] to JSON array format that vec0 expects
+        var embeddingJson = "[" + string.Join(", ", embedding.Select(f => f.ToString("G9"))) + "]";
 
         using var command = _connection.CreateCommand();
         command.CommandText = @"
-            INSERT INTO memories (file_path, line_number, embedding)
-            VALUES ($filePath, $lineNumber, $embedding);
+            INSERT INTO memories (embedding, file_path, line_number)
+            VALUES ($embedding, $filePath, $lineNumber);
         ";
+        command.Parameters.AddWithValue("$embedding", embeddingJson);
         command.Parameters.AddWithValue("$filePath", filePath);
         command.Parameters.AddWithValue("$lineNumber", lineNumber);
-        command.Parameters.AddWithValue("$embedding", embeddingBytes);
 
         await command.ExecuteNonQueryAsync();
     }
 
     /// <summary>
     /// Searches for the k nearest neighbors to the query embedding.
-    /// Uses brute-force cosine distance for now; TODO: upgrade to vec0 for speed.
+    /// Uses vec0 extension for fast KNN search.
     /// </summary>
     public async Task<List<VectorSearchResult>> SearchAsync(float[] queryEmbedding, int k)
     {
@@ -96,34 +101,34 @@ public class VectorIndexService : IDisposable
             throw new ArgumentException("Query embedding must be 384 dimensions", nameof(queryEmbedding));
         }
 
-        // Brute-force k-NN: load all vectors, compute distances, return top k
+        // Convert query embedding to JSON array format that vec0 expects
+        var queryJson = "[" + string.Join(", ", queryEmbedding.Select(f => f.ToString("G9"))) + "]";
+
         var results = new List<VectorSearchResult>();
 
         using var command = _connection.CreateCommand();
-        command.CommandText = "SELECT id, file_path, line_number, embedding FROM memories;";
+        command.CommandText = @"
+            SELECT file_path, line_number, distance
+            FROM memories
+            WHERE embedding MATCH $query
+            ORDER BY distance
+            LIMIT $k;
+        ";
+        command.Parameters.AddWithValue("$query", queryJson);
+        command.Parameters.AddWithValue("$k", k);
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var filePath = reader.GetString(1);
-            var lineNumber = reader.GetInt32(2);
-            var embeddingBytes = (byte[])reader["embedding"];
-
-            var embedding = new float[384];
-            Buffer.BlockCopy(embeddingBytes, 0, embedding, 0, embeddingBytes.Length);
-
-            var distance = ComputeCosineDistance(queryEmbedding, embedding);
-
             results.Add(new VectorSearchResult
             {
-                FilePath = filePath,
-                LineNumber = lineNumber,
-                Distance = distance
+                FilePath = reader.GetString(0),
+                LineNumber = reader.GetInt32(1),
+                Distance = reader.GetFloat(2)
             });
         }
 
-        // Sort by distance (ascending) and take top k
-        return results.OrderBy(r => r.Distance).Take(k).ToList();
+        return results;
     }
 
     /// <summary>
@@ -157,41 +162,6 @@ public class VectorIndexService : IDisposable
         command.CommandText = "DELETE FROM memories WHERE file_path = $filePath;";
         command.Parameters.AddWithValue("$filePath", filePath);
         await command.ExecuteNonQueryAsync();
-    }
-
-    private float ComputeCosineDistance(float[] a, float[] b)
-    {
-        // Compute cosine distance using the full formula: 1 - (dot(a,b) / (||a|| * ||b||))
-        // This works correctly for both normalized and non-normalized vectors.
-        // While all-MiniLM-L6-v2 produces normalized vectors in production,
-        // using the full formula ensures correctness in all cases (including tests).
-
-        float dotProduct = 0;
-        float magnitudeA = 0;
-        float magnitudeB = 0;
-
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            magnitudeA += a[i] * a[i];
-            magnitudeB += b[i] * b[i];
-        }
-
-        magnitudeA = MathF.Sqrt(magnitudeA);
-        magnitudeB = MathF.Sqrt(magnitudeB);
-
-        // Handle zero vectors to avoid division by zero
-        if (magnitudeA == 0 || magnitudeB == 0)
-        {
-            return 1.0f; // Maximum distance for zero vectors
-        }
-
-        float cosineSimilarity = dotProduct / (magnitudeA * magnitudeB);
-
-        // Clamp to [-1, 1] to prevent floating point inaccuracies
-        cosineSimilarity = Math.Max(-1.0f, Math.Min(1.0f, cosineSimilarity));
-
-        return 1.0f - cosineSimilarity;
     }
 
     public void Dispose()

@@ -59,6 +59,32 @@ public class VectorIndexServiceTests
     }
 
     [Test]
+    public async Task InitializeAsync_ShouldCreateVec0VirtualTable()
+    {
+        // Act
+        await _service.InitializeAsync();
+
+        // Assert - verify it's a virtual table using vec0, not a regular table
+        using var connection = new SqliteConnection($"Data Source={_testDbPath}");
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT sql
+            FROM sqlite_master
+            WHERE type='table' AND name='memories';
+        ";
+        var tableDef = await command.ExecuteScalarAsync();
+
+        Assert.That(tableDef, Is.Not.Null);
+        var tableDefinition = tableDef!.ToString()!;
+
+        // Verify it's a virtual table using vec0 extension
+        Assert.That(tableDefinition, Does.Contain("VIRTUAL TABLE"));
+        Assert.That(tableDefinition, Does.Contain("vec0"));
+        Assert.That(tableDefinition, Does.Contain("embedding"));
+    }
+
+    [Test]
     public async Task InsertAsync_ShouldStoreVectorWithReference()
     {
         // Arrange
@@ -74,6 +100,13 @@ public class VectorIndexServiceTests
         // Assert - verify the row was inserted
         using var connection = new SqliteConnection($"Data Source={_testDbPath}");
         await connection.OpenAsync();
+
+        // Load vec0 extension for verification queries
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var extensionPath = Path.Combine(baseDir, "Assets", "sqlite-vec", "vec0");
+        connection.EnableExtensions(true);
+        connection.LoadExtension(extensionPath);
+
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM memories;";
         var count = (long)(await command.ExecuteScalarAsync())!;
@@ -98,6 +131,13 @@ public class VectorIndexServiceTests
         // Assert
         using var connection = new SqliteConnection($"Data Source={_testDbPath}");
         await connection.OpenAsync();
+
+        // Load vec0 extension for verification queries
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var extensionPath = Path.Combine(baseDir, "Assets", "sqlite-vec", "vec0");
+        connection.EnableExtensions(true);
+        connection.LoadExtension(extensionPath);
+
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM memories;";
         var count = (long)(await command.ExecuteScalarAsync())!;
@@ -237,6 +277,13 @@ public class VectorIndexServiceTests
         // Assert
         using var connection = new SqliteConnection($"Data Source={_testDbPath}");
         await connection.OpenAsync();
+
+        // Load vec0 extension for verification queries
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var extensionPath = Path.Combine(baseDir, "Assets", "sqlite-vec", "vec0");
+        connection.EnableExtensions(true);
+        connection.LoadExtension(extensionPath);
+
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM memories;";
         var count = (long)(await command.ExecuteScalarAsync())!;

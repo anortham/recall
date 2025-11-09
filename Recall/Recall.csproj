@@ -5,6 +5,21 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <!-- Package as dotnet tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>recall-mcp</ToolCommandName>
+
+    <!-- NuGet package metadata -->
+    <PackageId>Recall.MCP</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Alan Nelson</Authors>
+    <Description>Recall MCP Server - Embedded semantic memory for AI agents with persistent long-term context through JSONL storage and vec0-powered vector search</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/alann-maulana/recall</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/alann-maulana/recall</PackageProjectUrl>
+    <PackageTags>mcp;model-context-protocol;semantic-search;vector-database;sqlite-vec;ai-memory</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,10 +35,27 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\commands\*.md" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="Assets\model\model.onnx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Assets\model\vocab.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\sqlite-vec\vec0.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\sqlite-vec\vec0.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Assets\sqlite-vec\vec0.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

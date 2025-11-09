@@ -3,8 +3,50 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using Recall;
+using Recall.Commands;
 using Serilog;
 using Serilog.Events;
+
+// Handle CLI commands before starting MCP server
+if (args.Length > 0)
+{
+    var command = args[0].ToLowerInvariant();
+
+    if (command == "init")
+    {
+        return await InitCommand.ExecuteAsync(args);
+    }
+    else if (command == "--help" || command == "-h")
+    {
+        PrintUsage();
+        return 0;
+    }
+    else if (command == "--version" || command == "-v")
+    {
+        Console.WriteLine("Recall MCP Server v0.1.0");
+        return 0;
+    }
+    else
+    {
+        Console.Error.WriteLine($"Unknown command: {command}");
+        PrintUsage();
+        return 1;
+    }
+}
+
+static void PrintUsage()
+{
+    Console.WriteLine("Recall MCP Server - Embedded semantic memory for AI agents");
+    Console.WriteLine();
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  recall-mcp              Start MCP server (stdio mode)");
+    Console.WriteLine("  recall-mcp init         Initialize project with commands and hooks");
+    Console.WriteLine("  recall-mcp --help       Show this help message");
+    Console.WriteLine("  recall-mcp --version    Show version information");
+    Console.WriteLine();
+    Console.WriteLine("For 'init' command options:");
+    InitCommand.PrintUsage();
+}
 
 // Configure Serilog BEFORE building the host
 // CRITICAL: Write to stderr and file, NEVER stdout (stdout is for MCP protocol)
@@ -48,7 +90,7 @@ builder.Services
         options.ServerInfo = new ModelContextProtocol.Protocol.Implementation
         {
             Name = "Recall",
-            Version = "1.0.0"
+            Version = "0.1.0"
         };
         options.ServerInstructions = Instructions.Get();
     })
@@ -68,6 +110,7 @@ Log.Information("📝 Logs: {LogPath}", logFilePath);
 try
 {
     await host.RunAsync();
+    return 0;
 }
 finally
 {
