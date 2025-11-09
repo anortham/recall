@@ -133,14 +133,21 @@ public class FileWatcherService : IDisposable
 
         Log.Information("Re-indexing {EventCount} memories from {FileName}", events.Count, Path.GetFileName(filePath));
 
+        // Infer workspace path from file path for backward compatibility with old JSONL files
+        // File path structure: {workspace}/.recall/memories/YYYY-MM-DD/memories.jsonl
+        var inferredWorkspace = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(filePath)!, "..", "..", ".."));
+
         // Re-index each event
         for (int i = 0; i < events.Count; i++)
         {
             var memoryEvent = events[i];
             var embedding = await embeddingService.GenerateEmbeddingAsync(memoryEvent.Content);
 
+            // Use WorkspacePath from memory if available, otherwise use inferred workspace
+            var workspacePath = memoryEvent.WorkspacePath ?? inferredWorkspace;
+
             // Insert with correct line number (0-indexed)
-            await vectorIndex.InsertAsync(embedding, memoryEvent.WorkspacePath, filePath, i);
+            await vectorIndex.InsertAsync(embedding, workspacePath, filePath, i);
         }
 
         Log.Information("Successfully re-indexed {EventCount} memories", events.Count);

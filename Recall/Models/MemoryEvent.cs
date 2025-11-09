@@ -27,9 +27,10 @@ public class MemoryEvent
 
     /// <summary>
     /// The workspace path where this memory originated.
+    /// Optional for backward compatibility with pre-multi-workspace JSONL files.
     /// </summary>
     [JsonPropertyName("workspace_path")]
-    public required string WorkspacePath { get; set; }
+    public string? WorkspacePath { get; set; }
 
     /// <summary>
     /// When this memory was created (UTC).
