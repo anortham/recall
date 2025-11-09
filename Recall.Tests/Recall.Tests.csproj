@@ -25,13 +25,6 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="..\Recall\Assets\model\model.onnx" Link="Assets\model\model.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Recall\Assets\model\vocab.txt" Link="Assets\model\vocab.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+  <!-- Model files auto-downloaded at runtime by EmbeddingService -->
 
 </Project>
