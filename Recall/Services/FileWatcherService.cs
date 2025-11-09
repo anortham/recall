@@ -46,12 +46,40 @@ public class FileWatcherService : IDisposable
     }
 
     /// <summary>
-    /// Starts watching for file changes.
+    /// Starts watching for file changes and indexes existing files.
     /// </summary>
     public void Start()
     {
         _watcher.EnableRaisingEvents = true;
         Log.Information("FileWatcher started - monitoring memories/ directory");
+
+        // Index existing JSONL files on startup (fire-and-forget)
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var memoriesDir = Path.Combine(_recallDir, "memories");
+                if (!Directory.Exists(memoriesDir))
+                {
+                    return;
+                }
+
+                var jsonlFiles = Directory.GetFiles(memoriesDir, "*.jsonl", SearchOption.AllDirectories);
+                if (jsonlFiles.Length > 0)
+                {
+                    Log.Information("Found {FileCount} existing JSONL file(s), starting initial indexing", jsonlFiles.Length);
+                    foreach (var filePath in jsonlFiles)
+                    {
+                        await ReindexFileAsync(filePath);
+                    }
+                    Log.Information("Initial indexing complete");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to index existing files on startup");
+            }
+        });
     }
 
     /// <summary>
