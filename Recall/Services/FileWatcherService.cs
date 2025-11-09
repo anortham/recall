@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
+using Blake3;
 
 namespace Recall;
 
@@ -153,11 +154,25 @@ public class FileWatcherService : IDisposable
 
         await vectorIndex.InitializeAsync();
 
-        // Clear existing index entries for this file to prevent duplicates
-        await vectorIndex.DeleteByFileAsync(filePath);
+        // Compute BLAKE3 hash of file content to detect changes
+        var fileBytes = await File.ReadAllBytesAsync(filePath);
+        var hashBytes = Hasher.Hash(fileBytes);
+        var currentHash = Convert.ToHexString(hashBytes.AsSpan()).ToLowerInvariant();
 
         // Read all events from the file
         var events = await jsonlStorage.ReadAllAsync(filePath);
+
+        // Check if file is already indexed with same hash (skip if so, saves GPU cycles)
+        var metadata = await vectorIndex.GetFileMetadataAsync(filePath);
+        if (metadata != null && metadata.Blake3Hash == currentHash && metadata.IndexedCount == events.Count)
+        {
+            Log.Debug("File already indexed with matching hash ({Hash}), skipping: {FileName}",
+                currentHash[..8], Path.GetFileName(filePath));
+            return;
+        }
+
+        // Content changed or new file - clear existing index entries to prevent duplicates
+        await vectorIndex.DeleteByFileAsync(filePath);
 
         Log.Information("Re-indexing {EventCount} memories from {FileName}", events.Count, Path.GetFileName(filePath));
 
@@ -179,7 +194,10 @@ public class FileWatcherService : IDisposable
             await vectorIndex.InsertAsync(embeddings[i], workspacePath, filePath, i);
         }
 
-        Log.Information("Successfully re-indexed {EventCount} memories", events.Count);
+        // Update metadata with new hash and count
+        await vectorIndex.SetFileMetadataAsync(filePath, currentHash, events.Count);
+
+        Log.Information("Successfully re-indexed {EventCount} memories (hash: {Hash})", events.Count, currentHash[..8]);
     }
 
     public void Dispose()

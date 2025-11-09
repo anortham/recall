@@ -48,6 +48,18 @@ public class VectorIndexService : IDisposable
         ";
         await command.ExecuteNonQueryAsync();
 
+        // Create metadata table for file hashes (separate from vec0 virtual table)
+        using var metadataCommand = _connection.CreateCommand();
+        metadataCommand.CommandText = @"
+            CREATE TABLE IF NOT EXISTS file_metadata (
+                file_path TEXT PRIMARY KEY,
+                blake3_hash TEXT NOT NULL,
+                indexed_count INTEGER NOT NULL,
+                last_indexed_utc TEXT NOT NULL
+            );
+        ";
+        await metadataCommand.ExecuteNonQueryAsync();
+
         _initialized = true;
     }
 
@@ -203,6 +215,71 @@ public class VectorIndexService : IDisposable
     }
 
     /// <summary>
+    /// Gets metadata for a file (hash, count, timestamp) if it exists.
+    /// </summary>
+    public async Task<FileMetadata?> GetFileMetadataAsync(string filePath)
+    {
+        if (!_initialized || _connection == null)
+        {
+            throw new InvalidOperationException("VectorIndexService must be initialized before use.");
+        }
+
+        ArgumentNullException.ThrowIfNull(filePath);
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            SELECT blake3_hash, indexed_count, last_indexed_utc
+            FROM file_metadata
+            WHERE file_path = $filePath;
+        ";
+        command.Parameters.AddWithValue("$filePath", filePath);
+
+        using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new FileMetadata
+            {
+                FilePath = filePath,
+                Blake3Hash = reader.GetString(0),
+                IndexedCount = reader.GetInt32(1),
+                LastIndexedUtc = DateTime.Parse(reader.GetString(2))
+            };
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Updates or inserts file metadata after successful indexing.
+    /// </summary>
+    public async Task SetFileMetadataAsync(string filePath, string blake3Hash, int indexedCount)
+    {
+        if (!_initialized || _connection == null)
+        {
+            throw new InvalidOperationException("VectorIndexService must be initialized before use.");
+        }
+
+        ArgumentNullException.ThrowIfNull(filePath);
+        ArgumentNullException.ThrowIfNull(blake3Hash);
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = @"
+            INSERT INTO file_metadata (file_path, blake3_hash, indexed_count, last_indexed_utc)
+            VALUES ($filePath, $blake3Hash, $indexedCount, $timestamp)
+            ON CONFLICT(file_path) DO UPDATE SET
+                blake3_hash = $blake3Hash,
+                indexed_count = $indexedCount,
+                last_indexed_utc = $timestamp;
+        ";
+        command.Parameters.AddWithValue("$filePath", filePath);
+        command.Parameters.AddWithValue("$blake3Hash", blake3Hash);
+        command.Parameters.AddWithValue("$indexedCount", indexedCount);
+        command.Parameters.AddWithValue("$timestamp", DateTime.UtcNow.ToString("O"));
+
+        await command.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
     /// Gets all unique workspace paths in the index.
     /// Useful for cleanup operations.
     /// </summary>
@@ -248,4 +325,15 @@ public class VectorSearchResult
     public required string FilePath { get; set; }
     public required int LineNumber { get; set; }
     public required float Distance { get; set; }
+}
+
+/// <summary>
+/// Metadata about an indexed JSONL file.
+/// </summary>
+public class FileMetadata
+{
+    public required string FilePath { get; set; }
+    public required string Blake3Hash { get; set; }
+    public required int IndexedCount { get; set; }
+    public required DateTime LastIndexedUtc { get; set; }
 }
