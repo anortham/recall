@@ -157,6 +157,29 @@ public class EmbeddingService : IDisposable
         return await Task.Run(() => _embedder.GenerateEmbedding(text).ToArray());
     }
 
+    /// <summary>
+    /// Generates normalized embedding vectors for multiple texts in a single GPU batch.
+    /// Much faster than calling GenerateEmbeddingAsync in a loop.
+    /// </summary>
+    /// <param name="texts">The input texts to embed.</param>
+    /// <returns>An array of 384-dimensional normalized float arrays.</returns>
+    public async Task<float[][]> GenerateEmbeddingBatchAsync(string[] texts)
+    {
+        ArgumentNullException.ThrowIfNull(texts);
+
+        if (texts.Length == 0)
+        {
+            return Array.Empty<float[]>();
+        }
+
+        // Run ONNX batch inference on thread pool to avoid blocking
+        return await Task.Run(() =>
+        {
+            var embeddings = _embedder.GenerateEmbeddings(texts);
+            return embeddings.Select(e => e.ToArray()).ToArray();
+        });
+    }
+
     public void Dispose()
     {
         if (!_disposed)

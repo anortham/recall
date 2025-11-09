@@ -165,17 +165,18 @@ public class FileWatcherService : IDisposable
         // File path structure: {workspace}/.recall/memories/YYYY-MM-DD/memories.jsonl
         var inferredWorkspace = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(filePath)!, "..", "..", ".."));
 
-        // Re-index each event
+        // Generate embeddings in a single GPU batch (much faster than loop)
+        var contents = events.Select(e => e.Content).ToArray();
+        var embeddings = await embeddingService.GenerateEmbeddingBatchAsync(contents);
+
+        // Insert embeddings sequentially (SQLite doesn't like concurrent writes)
         for (int i = 0; i < events.Count; i++)
         {
-            var memoryEvent = events[i];
-            var embedding = await embeddingService.GenerateEmbeddingAsync(memoryEvent.Content);
-
             // Use WorkspacePath from memory if available, otherwise use inferred workspace
-            var workspacePath = memoryEvent.WorkspacePath ?? inferredWorkspace;
+            var workspacePath = events[i].WorkspacePath ?? inferredWorkspace;
 
             // Insert with correct line number (0-indexed)
-            await vectorIndex.InsertAsync(embedding, workspacePath, filePath, i);
+            await vectorIndex.InsertAsync(embeddings[i], workspacePath, filePath, i);
         }
 
         Log.Information("Successfully re-indexed {EventCount} memories", events.Count);
