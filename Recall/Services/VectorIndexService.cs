@@ -112,35 +112,39 @@ public class VectorIndexService : IDisposable
 
         using var command = _connection.CreateCommand();
 
-        // Build query with optional workspace filter
-        var whereClause = workspacePath != null
-            ? "WHERE embedding MATCH $query AND workspace_path = $workspacePath"
-            : "WHERE embedding MATCH $query";
+        // Note: sqlite-vec doesn't allow filtering auxiliary columns in the WHERE clause
+        // during a MATCH operation. We post-filter in memory instead.
+        // If filtering by workspace, query extra results to account for filtering.
+        var queryLimit = workspacePath != null ? k * 10 : k; // Get 10x results for filtering
 
-        command.CommandText = $@"
+        command.CommandText = @"
             SELECT workspace_path, file_path, line_number, distance
             FROM memories
-            {whereClause}
+            WHERE embedding MATCH $query
             ORDER BY distance
-            LIMIT $k;
+            LIMIT $queryLimit;
         ";
         command.Parameters.AddWithValue("$query", queryJson);
-        command.Parameters.AddWithValue("$k", k);
-        if (workspacePath != null)
-        {
-            command.Parameters.AddWithValue("$workspacePath", workspacePath);
-        }
+        command.Parameters.AddWithValue("$queryLimit", queryLimit);
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            results.Add(new VectorSearchResult
+            var result = new VectorSearchResult
             {
                 WorkspacePath = reader.GetString(0),
                 FilePath = reader.GetString(1),
                 LineNumber = reader.GetInt32(2),
                 Distance = reader.GetFloat(3)
-            });
+            };
+
+            // Post-filter by workspace if specified
+            if (workspacePath == null || result.WorkspacePath == workspacePath)
+            {
+                results.Add(result);
+                if (results.Count >= k)
+                    break; // Got enough results
+            }
         }
 
         return results;

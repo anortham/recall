@@ -75,24 +75,25 @@ public class EmbeddingService : IDisposable
         using var httpClient = new HttpClient();
         httpClient.Timeout = TimeSpan.FromMinutes(5); // 86MB download may take time
 
-        const string baseUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx";
+        const string modelBaseUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx";
+        const string vocabBaseUrl = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main";
 
         try
         {
-            // Download model.onnx if missing
+            // Download model.onnx if missing (from /onnx subfolder)
             if (!modelExists)
             {
                 Log.Information("⏳ Downloading model.onnx (86 MB)...");
-                var modelBytes = await httpClient.GetByteArrayAsync($"{baseUrl}/model.onnx");
+                var modelBytes = await httpClient.GetByteArrayAsync($"{modelBaseUrl}/model.onnx");
                 await File.WriteAllBytesAsync(modelPath, modelBytes);
                 Log.Information("✅ model.onnx downloaded successfully");
             }
 
-            // Download vocab.txt if missing
+            // Download vocab.txt if missing (from main branch root, not /onnx)
             if (!vocabExists)
             {
                 Log.Information("⏳ Downloading vocab.txt (232 KB)...");
-                var vocabBytes = await httpClient.GetByteArrayAsync($"{baseUrl}/vocab.txt");
+                var vocabBytes = await httpClient.GetByteArrayAsync($"{vocabBaseUrl}/vocab.txt");
                 await File.WriteAllBytesAsync(vocabPath, vocabBytes);
                 Log.Information("✅ vocab.txt downloaded successfully");
             }
