@@ -41,6 +41,7 @@ public class VectorIndexService : IDisposable
         command.CommandText = @"
             CREATE VIRTUAL TABLE IF NOT EXISTS memories USING vec0(
                 embedding float[384],
+                +workspace_path TEXT,
                 +file_path TEXT,
                 +line_number INTEGER
             );
@@ -53,7 +54,7 @@ public class VectorIndexService : IDisposable
     /// <summary>
     /// Inserts an embedding vector with its source reference.
     /// </summary>
-    public async Task InsertAsync(float[] embedding, string filePath, int lineNumber)
+    public async Task InsertAsync(float[] embedding, string workspacePath, string filePath, int lineNumber)
     {
         if (!_initialized || _connection == null)
         {
@@ -61,6 +62,7 @@ public class VectorIndexService : IDisposable
         }
 
         ArgumentNullException.ThrowIfNull(embedding);
+        ArgumentNullException.ThrowIfNull(workspacePath);
         ArgumentNullException.ThrowIfNull(filePath);
 
         if (embedding.Length != 384)
@@ -73,10 +75,11 @@ public class VectorIndexService : IDisposable
 
         using var command = _connection.CreateCommand();
         command.CommandText = @"
-            INSERT INTO memories (embedding, file_path, line_number)
-            VALUES ($embedding, $filePath, $lineNumber);
+            INSERT INTO memories (embedding, workspace_path, file_path, line_number)
+            VALUES ($embedding, $workspacePath, $filePath, $lineNumber);
         ";
         command.Parameters.AddWithValue("$embedding", embeddingJson);
+        command.Parameters.AddWithValue("$workspacePath", workspacePath);
         command.Parameters.AddWithValue("$filePath", filePath);
         command.Parameters.AddWithValue("$lineNumber", lineNumber);
 
@@ -87,7 +90,8 @@ public class VectorIndexService : IDisposable
     /// Searches for the k nearest neighbors to the query embedding.
     /// Uses vec0 extension for fast KNN search.
     /// </summary>
-    public async Task<List<VectorSearchResult>> SearchAsync(float[] queryEmbedding, int k)
+    /// <param name="workspacePath">Optional workspace filter. Null = search all workspaces.</param>
+    public async Task<List<VectorSearchResult>> SearchAsync(float[] queryEmbedding, int k, string? workspacePath = null)
     {
         if (!_initialized || _connection == null)
         {
@@ -107,24 +111,35 @@ public class VectorIndexService : IDisposable
         var results = new List<VectorSearchResult>();
 
         using var command = _connection.CreateCommand();
-        command.CommandText = @"
-            SELECT file_path, line_number, distance
+
+        // Build query with optional workspace filter
+        var whereClause = workspacePath != null
+            ? "WHERE embedding MATCH $query AND workspace_path = $workspacePath"
+            : "WHERE embedding MATCH $query";
+
+        command.CommandText = $@"
+            SELECT workspace_path, file_path, line_number, distance
             FROM memories
-            WHERE embedding MATCH $query
+            {whereClause}
             ORDER BY distance
             LIMIT $k;
         ";
         command.Parameters.AddWithValue("$query", queryJson);
         command.Parameters.AddWithValue("$k", k);
+        if (workspacePath != null)
+        {
+            command.Parameters.AddWithValue("$workspacePath", workspacePath);
+        }
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
             results.Add(new VectorSearchResult
             {
-                FilePath = reader.GetString(0),
-                LineNumber = reader.GetInt32(1),
-                Distance = reader.GetFloat(2)
+                WorkspacePath = reader.GetString(0),
+                FilePath = reader.GetString(1),
+                LineNumber = reader.GetInt32(2),
+                Distance = reader.GetFloat(3)
             });
         }
 
@@ -164,6 +179,50 @@ public class VectorIndexService : IDisposable
         await command.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// Deletes all vectors from the index associated with a specific workspace.
+    /// Used for cleanup when workspace no longer exists.
+    /// </summary>
+    public async Task DeleteByWorkspaceAsync(string workspacePath)
+    {
+        if (!_initialized || _connection == null)
+        {
+            throw new InvalidOperationException("VectorIndexService must be initialized before use.");
+        }
+
+        ArgumentNullException.ThrowIfNull(workspacePath);
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = "DELETE FROM memories WHERE workspace_path = $workspacePath;";
+        command.Parameters.AddWithValue("$workspacePath", workspacePath);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Gets all unique workspace paths in the index.
+    /// Useful for cleanup operations.
+    /// </summary>
+    public async Task<List<string>> GetAllWorkspacePathsAsync()
+    {
+        if (!_initialized || _connection == null)
+        {
+            throw new InvalidOperationException("VectorIndexService must be initialized before use.");
+        }
+
+        var workspaces = new List<string>();
+
+        using var command = _connection.CreateCommand();
+        command.CommandText = "SELECT DISTINCT workspace_path FROM memories;";
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            workspaces.Add(reader.GetString(0));
+        }
+
+        return workspaces;
+    }
+
     public void Dispose()
     {
         if (!_disposed)
@@ -181,6 +240,7 @@ public class VectorIndexService : IDisposable
 /// </summary>
 public class VectorSearchResult
 {
+    public required string WorkspacePath { get; set; }
     public required string FilePath { get; set; }
     public required int LineNumber { get; set; }
     public required float Distance { get; set; }

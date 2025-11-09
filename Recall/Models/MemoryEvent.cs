@@ -26,6 +26,12 @@ public class MemoryEvent
     public required string Content { get; set; }
 
     /// <summary>
+    /// The workspace path where this memory originated.
+    /// </summary>
+    [JsonPropertyName("workspace_path")]
+    public required string WorkspacePath { get; set; }
+
+    /// <summary>
     /// When this memory was created (UTC).
     /// </summary>
     [JsonPropertyName("timestamp")]

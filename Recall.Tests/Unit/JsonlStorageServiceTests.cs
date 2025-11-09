@@ -36,6 +36,7 @@ public class JsonlStorageServiceTests
             Type = "test",
             Source = "test",
             Content = "test content",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = new DateTime(2025, 11, 8, 10, 30, 0, DateTimeKind.Utc)
         };
 
@@ -56,6 +57,7 @@ public class JsonlStorageServiceTests
             Type = "chat_message",
             Source = "user_a",
             Content = "Test message",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = DateTime.UtcNow
         };
 
@@ -81,6 +83,7 @@ public class JsonlStorageServiceTests
             Type = "event1",
             Source = "source1",
             Content = "Content 1",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = timestamp
         };
         var event2 = new MemoryEvent
@@ -88,6 +91,7 @@ public class JsonlStorageServiceTests
             Type = "event2",
             Source = "source2",
             Content = "Content 2",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = timestamp
         };
 
@@ -114,6 +118,7 @@ public class JsonlStorageServiceTests
             Type = "first",
             Source = "source",
             Content = "First event",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = timestamp
         };
         var event2 = new MemoryEvent
@@ -121,6 +126,7 @@ public class JsonlStorageServiceTests
             Type = "second",
             Source = "source",
             Content = "Second event",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = timestamp
         };
 
@@ -145,9 +151,9 @@ public class JsonlStorageServiceTests
         var timestamp = new DateTime(2025, 11, 8, 12, 0, 0, DateTimeKind.Utc);
         var events = new[]
         {
-            new MemoryEvent { Type = "a", Source = "s", Content = "Content A", Timestamp = timestamp },
-            new MemoryEvent { Type = "b", Source = "s", Content = "Content B", Timestamp = timestamp },
-            new MemoryEvent { Type = "c", Source = "s", Content = "Content C", Timestamp = timestamp }
+            new MemoryEvent { Type = "a", Source = "s", Content = "Content A", WorkspacePath = "C:/test/workspace", Timestamp = timestamp },
+            new MemoryEvent { Type = "b", Source = "s", Content = "Content B", WorkspacePath = "C:/test/workspace", Timestamp = timestamp },
+            new MemoryEvent { Type = "c", Source = "s", Content = "Content C", WorkspacePath = "C:/test/workspace", Timestamp = timestamp }
         };
 
         foreach (var evt in events)
@@ -177,6 +183,7 @@ public class JsonlStorageServiceTests
             Type = "test",
             Source = "test",
             Content = "test",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = timestamp
         };
         await _service.AppendAsync(memoryEvent);

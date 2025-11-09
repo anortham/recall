@@ -79,9 +79,11 @@ Semantic search finds conceptually similar work across all memories. Rich conten
     {
         try
         {
-            var recallDir = Path.Combine(Directory.GetCurrentDirectory(), ".recall");
+            var workspacePath = Directory.GetCurrentDirectory();
+            var recallDir = Path.Combine(workspacePath, ".recall");
 
-            Log.Information("Storing memory: type={Type}, source={Source}, content_length={ContentLength}", type, source, content.Length);
+            Log.Information("Storing memory: workspace={Workspace}, type={Type}, source={Source}, content_length={ContentLength}",
+                workspacePath, type, source, content.Length);
 
             // Auto-initialize: Create directory and .gitignore
             await EnsureInitializedAsync(recallDir);
@@ -92,6 +94,7 @@ Semantic search finds conceptually similar work across all memories. Rich conten
                 Type = type,
                 Source = source,
                 Content = content,
+                WorkspacePath = workspacePath,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -108,8 +111,9 @@ Semantic search finds conceptually similar work across all memories. Rich conten
                     var embedding = await _embeddingService.GenerateEmbeddingAsync(content);
                     Log.Debug("Generated embedding: {Dimensions} dimensions", embedding.Length);
 
-                    await _vectorIndexService.InsertAsync(embedding, filePath, lineNumber);
-                    Log.Information("Indexed memory at {FilePath}:{LineNumber}", Path.GetRelativePath(recallDir, filePath), lineNumber);
+                    await _vectorIndexService.InsertAsync(embedding, workspacePath, filePath, lineNumber);
+                    Log.Information("Indexed memory at {Workspace}::{FilePath}:{LineNumber}",
+                        workspacePath, Path.GetRelativePath(recallDir, filePath), lineNumber);
                 }
                 catch (Exception ex)
                 {
@@ -171,14 +175,37 @@ Lower values (3-5) = more focused, higher confidence matches.
 Higher values (10-20) = broader context, may include less relevant results.
 
 The system automatically clamps this to 1-20 range for safety.")]
-        int k = 5)
+        int k = 5,
+
+        [Description(@"Workspace filter (optional): 'current' (default), 'all', or specific workspace path.
+
+DEFAULT: 'current' - search only the current workspace.
+
+Options:
+- 'current' = only this workspace
+- 'all' = search across all workspaces
+- '/path/to/workspace' = specific workspace path
+
+Use 'all' for cross-project queries like standup reports or finding patterns across projects.")]
+        string workspace = "current")
     {
         try
         {
-            var recallDir = Path.Combine(Directory.GetCurrentDirectory(), ".recall");
-            var indexPath = Path.Combine(recallDir, "index.db");
+            var currentWorkspacePath = Directory.GetCurrentDirectory();
+            var recallDir = Path.Combine(currentWorkspacePath, ".recall");
+            var globalRecallDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".recall");
+            var indexPath = Path.Combine(globalRecallDir, "index.db");
 
-            Log.Information("Searching memories: query='{Query}', k={K}", query, k);
+            // Determine workspace filter
+            string? workspaceFilter = workspace.ToLowerInvariant() switch
+            {
+                "current" => currentWorkspacePath,
+                "all" => null, // null means search all workspaces
+                _ => workspace // specific path
+            };
+
+            Log.Information("Searching memories: query='{Query}', k={K}, workspace={WorkspaceFilter}",
+                query, k, workspaceFilter ?? "all");
 
             // Auto-initialize if needed
             await EnsureInitializedAsync(recallDir);
@@ -190,6 +217,7 @@ The system automatically clamps this to 1-20 range for safety.")]
                 {
                     success = true,
                     query,
+                    workspace = workspaceFilter ?? "all",
                     message = "No memories stored yet. Start using store() to build your memory bank.",
                     resultsCount = 0,
                     memories = Array.Empty<object>()
@@ -204,9 +232,9 @@ The system automatically clamps this to 1-20 range for safety.")]
             var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
             Log.Debug("Query embedding generated: {Dimensions} dimensions", queryEmbedding.Length);
 
-            // Search vector index
-            Log.Debug("Searching vector index");
-            var results = await _vectorIndexService.SearchAsync(queryEmbedding, k);
+            // Search vector index with optional workspace filter
+            Log.Debug("Searching vector index with workspace filter: {Filter}", workspaceFilter ?? "all");
+            var results = await _vectorIndexService.SearchAsync(queryEmbedding, k, workspaceFilter);
             Log.Information("Found {ResultCount} results", results.Count);
 
             // Load the actual memory events from JSONL
@@ -214,7 +242,8 @@ The system automatically clamps this to 1-20 range for safety.")]
 
             foreach (var result in results)
             {
-                var memoryEvent = await _jsonlStorageService.ReadLineAsync(result.FilePath, result.LineNumber);
+                var fullFilePath = Path.Combine(result.WorkspacePath, result.FilePath);
+                var memoryEvent = await _jsonlStorageService.ReadLineAsync(fullFilePath, result.LineNumber);
                 if (memoryEvent != null)
                 {
                     memories.Add(new
@@ -222,6 +251,7 @@ The system automatically clamps this to 1-20 range for safety.")]
                         type = memoryEvent.Type,
                         source = memoryEvent.Source,
                         content = memoryEvent.Content,
+                        workspace = result.WorkspacePath,
                         timestamp = memoryEvent.Timestamp,
                         similarity = 1.0f - result.Distance // Convert distance to similarity score
                     });
@@ -234,6 +264,7 @@ The system automatically clamps this to 1-20 range for safety.")]
             {
                 success = true,
                 query,
+                workspace = workspaceFilter ?? "all",
                 resultsCount = memories.Count,
                 memories
             }, new JsonSerializerOptions { WriteIndented = true });
@@ -241,6 +272,75 @@ The system automatically clamps this to 1-20 range for safety.")]
         catch (Exception ex)
         {
             Log.Error(ex, "Recall operation failed");
+
+            return JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    /// <summary>
+    /// Cleans up orphaned workspace entries from the global index.
+    /// Removes vector entries for workspaces that no longer exist on disk.
+    /// </summary>
+    [McpServerTool(Name = "cleanup")]
+    [Description(@"Clean up orphaned workspace entries from the global vector index.
+
+This tool scans the global index (~/.recall/index.db) and removes entries for workspaces that no longer exist on disk.
+
+Use this periodically to:
+- Free up disk space in the index
+- Remove old project memories after moving/deleting workspaces
+- Keep the index clean and performant
+
+The cleanup is safe - it only removes entries where the workspace directory no longer exists. Memories in existing workspaces are never touched.
+
+Returns the list of workspaces that were cleaned up.")]
+    public async Task<string> CleanupAsync()
+    {
+        try
+        {
+            var recallDir = Path.Combine(Directory.GetCurrentDirectory(), ".recall");
+            await EnsureInitializedAsync(recallDir);
+
+            Log.Information("Starting workspace cleanup");
+
+            // Get all unique workspace paths from the index
+            var allWorkspaces = await _vectorIndexService.GetAllWorkspacePathsAsync();
+            Log.Information("Found {WorkspaceCount} unique workspaces in index", allWorkspaces.Count);
+
+            var removedWorkspaces = new List<string>();
+
+            foreach (var workspacePath in allWorkspaces)
+            {
+                if (!Directory.Exists(workspacePath))
+                {
+                    Log.Information("Workspace no longer exists, removing: {Workspace}", workspacePath);
+                    await _vectorIndexService.DeleteByWorkspaceAsync(workspacePath);
+                    removedWorkspaces.Add(workspacePath);
+                }
+                else
+                {
+                    Log.Debug("Workspace exists, keeping: {Workspace}", workspacePath);
+                }
+            }
+
+            Log.Information("Cleanup complete: removed {RemovedCount} workspaces", removedWorkspaces.Count);
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                message = $"Cleaned up {removedWorkspaces.Count} orphaned workspaces",
+                totalWorkspaces = allWorkspaces.Count,
+                removedWorkspaces,
+                remainingWorkspaces = allWorkspaces.Count - removedWorkspaces.Count
+            }, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Cleanup operation failed");
 
             return JsonSerializer.Serialize(new
             {

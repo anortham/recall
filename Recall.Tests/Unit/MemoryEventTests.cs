@@ -14,6 +14,7 @@ public class MemoryEventTests
             Type = "chat_message",
             Source = "user_a",
             Content = "The user seems frustrated about the slow API response time.",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = DateTime.Parse("2025-11-08T10:30:00Z").ToUniversalTime()
         };
 
@@ -35,6 +36,7 @@ public class MemoryEventTests
           "type": "chat_message",
           "source": "user_a",
           "content": "The user seems frustrated about the slow API response time.",
+          "workspace_path": "C:/test/workspace",
           "timestamp": "2025-11-08T10:30:00Z"
         }
         """;
@@ -59,6 +61,7 @@ public class MemoryEventTests
             Type = "chat_message",
             Source = "test",
             Content = "test content",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = DateTime.UtcNow
         };
 
@@ -82,6 +85,7 @@ public class MemoryEventTests
             Type = "decision_point",
             Source = "agent_alpha",
             Content = "User chose option B over A due to cost concerns.",
+            WorkspacePath = "C:/test/workspace",
             Timestamp = new DateTime(2025, 11, 8, 15, 30, 45, DateTimeKind.Utc)
         };
 

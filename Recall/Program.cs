@@ -74,8 +74,13 @@ builder.Logging.ClearProviders();
 builder.Services.AddSerilog(Log.Logger);
 
 // Register services as singletons
+// Workspace-local: stores JSONL memories
 var recallDir = Path.Combine(Directory.GetCurrentDirectory(), ".recall");
-var indexPath = Path.Combine(recallDir, "index.db");
+
+// User-global: stores vector index for all workspaces
+var globalRecallDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".recall");
+Directory.CreateDirectory(globalRecallDir);
+var indexPath = Path.Combine(globalRecallDir, "index.db");
 
 builder.Services.AddSingleton<EmbeddingService>(sp => new EmbeddingService());
 builder.Services.AddSingleton<JsonlStorageService>(sp => new JsonlStorageService(recallDir));
@@ -102,9 +107,11 @@ var host = builder.Build();
 
 // Log startup message
 Log.Information("🧠 Recall MCP Server started");
-Log.Information("📁 Storage: .recall/ directory");
-Log.Information("🔧 Tools: store, recall");
+Log.Information("📁 Workspace storage: {RecallDir}", recallDir);
+Log.Information("🗄️  Global index: {IndexPath}", indexPath);
+Log.Information("🔧 Tools: store, recall, cleanup");
 Log.Information("🔍 Search: 384-dim all-MiniLM-L6-v2 embeddings");
+Log.Information("🌐 Multi-workspace: query current workspace or all workspaces");
 Log.Information("📝 Logs: {LogPath}", logFilePath);
 
 try

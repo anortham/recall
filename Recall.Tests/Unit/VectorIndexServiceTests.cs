@@ -91,11 +91,12 @@ public class VectorIndexServiceTests
         await _service.InitializeAsync();
         var embedding = new float[384];
         for (int i = 0; i < 384; i++) embedding[i] = 0.1f;
+        var workspacePath = "C:/test/workspace";
         var filePath = ".recall/2025-11-08/memories.jsonl";
         var lineNumber = 5;
 
         // Act
-        await _service.InsertAsync(embedding, filePath, lineNumber);
+        await _service.InsertAsync(embedding, workspacePath, filePath, lineNumber);
 
         // Assert - verify the row was inserted
         using var connection = new SqliteConnection($"Data Source={_testDbPath}");
@@ -119,14 +120,15 @@ public class VectorIndexServiceTests
     {
         // Arrange
         await _service.InitializeAsync();
+        var workspacePath = "C:/test/workspace";
         var embedding1 = new float[384];
         var embedding2 = new float[384];
         var embedding3 = new float[384];
 
         // Act
-        await _service.InsertAsync(embedding1, "file1.jsonl", 0);
-        await _service.InsertAsync(embedding2, "file2.jsonl", 1);
-        await _service.InsertAsync(embedding3, "file3.jsonl", 2);
+        await _service.InsertAsync(embedding1, workspacePath, "file1.jsonl", 0);
+        await _service.InsertAsync(embedding2, workspacePath, "file2.jsonl", 1);
+        await _service.InsertAsync(embedding3, workspacePath, "file3.jsonl", 2);
 
         // Assert
         using var connection = new SqliteConnection($"Data Source={_testDbPath}");
@@ -150,6 +152,7 @@ public class VectorIndexServiceTests
     {
         // Arrange
         await _service.InitializeAsync();
+        var workspacePath = "C:/test/workspace";
 
         // Insert 5 vectors
         for (int i = 0; i < 5; i++)
@@ -159,7 +162,7 @@ public class VectorIndexServiceTests
             {
                 embedding[j] = i * 0.1f; // Different vectors
             }
-            await _service.InsertAsync(embedding, $"file{i}.jsonl", i);
+            await _service.InsertAsync(embedding, workspacePath, $"file{i}.jsonl", i);
         }
 
         var queryEmbedding = new float[384];
@@ -204,9 +207,10 @@ public class VectorIndexServiceTests
             embedding3[i] = 0.5f;
         }
 
-        await _service.InsertAsync(embedding1, "far.jsonl", 0);
-        await _service.InsertAsync(embedding2, "close.jsonl", 1);
-        await _service.InsertAsync(embedding3, "medium.jsonl", 2);
+        var workspacePath = "C:/test/workspace";
+        await _service.InsertAsync(embedding1, workspacePath, "far.jsonl", 0);
+        await _service.InsertAsync(embedding2, workspacePath, "close.jsonl", 1);
+        await _service.InsertAsync(embedding3, workspacePath, "medium.jsonl", 2);
 
         // Query: Strong emphasis on first half (similar direction to embedding2)
         var queryEmbedding = new float[384];
@@ -231,16 +235,18 @@ public class VectorIndexServiceTests
         // Arrange
         await _service.InitializeAsync();
         var embedding = new float[384];
+        var workspacePath = "C:/test/workspace";
         var expectedPath = ".recall/2025-11-08/memories.jsonl";
         var expectedLine = 42;
 
-        await _service.InsertAsync(embedding, expectedPath, expectedLine);
+        await _service.InsertAsync(embedding, workspacePath, expectedPath, expectedLine);
 
         // Act
         var results = await _service.SearchAsync(embedding, k: 1);
 
         // Assert
         Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].WorkspacePath, Is.EqualTo(workspacePath));
         Assert.That(results[0].FilePath, Is.EqualTo(expectedPath));
         Assert.That(results[0].LineNumber, Is.EqualTo(expectedLine));
     }
@@ -250,10 +256,11 @@ public class VectorIndexServiceTests
     {
         // Arrange
         await _service.InitializeAsync();
+        var workspacePath = "C:/test/workspace";
         var embedding = new float[384];
         for (int i = 0; i < 384; i++) embedding[i] = 1.0f;
 
-        await _service.InsertAsync(embedding, "test.jsonl", 0);
+        await _service.InsertAsync(embedding, workspacePath, "test.jsonl", 0);
 
         // Act - search with same vector (perfect match)
         var results = await _service.SearchAsync(embedding, k: 1);
@@ -268,8 +275,9 @@ public class VectorIndexServiceTests
     {
         // Arrange
         await _service.InitializeAsync();
-        await _service.InsertAsync(new float[384], "file1.jsonl", 0);
-        await _service.InsertAsync(new float[384], "file2.jsonl", 1);
+        var workspacePath = "C:/test/workspace";
+        await _service.InsertAsync(new float[384], workspacePath, "file1.jsonl", 0);
+        await _service.InsertAsync(new float[384], workspacePath, "file2.jsonl", 1);
 
         // Act
         await _service.ClearAsync();
@@ -295,10 +303,11 @@ public class VectorIndexServiceTests
     public void InsertAsync_ShouldThrowIfNotInitialized()
     {
         // Arrange
+        var workspacePath = "C:/test/workspace";
         var embedding = new float[384];
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await _service.InsertAsync(embedding, "test.jsonl", 0));
+            await _service.InsertAsync(embedding, workspacePath, "test.jsonl", 0));
     }
 }

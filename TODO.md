@@ -1,3 +1,1 @@
-1. Fix the brute force vector search and replace it with a proper implementation.
-2. Create github flow to build windows, linux, macos versions of recall. should we package as a dotnet tool?
-3. We need some custom slash commands
+1. We need to be mindful of the size of batches we send to the gpu for embedding. look at how julie changes the size dynamically based on the amt of memory the available gpu has. this can help prevent crashes on gpus with less memory.

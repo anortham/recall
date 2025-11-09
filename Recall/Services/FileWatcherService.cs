@@ -140,7 +140,7 @@ public class FileWatcherService : IDisposable
             var embedding = await embeddingService.GenerateEmbeddingAsync(memoryEvent.Content);
 
             // Insert with correct line number (0-indexed)
-            await vectorIndex.InsertAsync(embedding, filePath, i);
+            await vectorIndex.InsertAsync(embedding, memoryEvent.WorkspacePath, filePath, i);
         }
 
         Log.Information("Successfully re-indexed {EventCount} memories", events.Count);
